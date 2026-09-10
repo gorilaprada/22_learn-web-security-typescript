@@ -3,7 +3,10 @@ import type { CookieOptions, Response } from "express";
 const SESSION_COOKIE_NAME = "session_id";
 
 const sessionCookieOptions = {
+  httpOnly: true,
   path: "/",
+  sameSite: "lax",
+  secure: true,
 } satisfies CookieOptions;
 
 type CookieSession = {
@@ -15,7 +18,10 @@ export function setSessionCookie(
   response: Response,
   session: CookieSession,
 ): void {
-  response.cookie(SESSION_COOKIE_NAME, session.token, sessionCookieOptions);
+  response.cookie(SESSION_COOKIE_NAME, session.token, {
+    ...sessionCookieOptions,
+    expires: new Date(session.expires_at),
+  });
 }
 
 export function clearSessionCookie(response: Response): void {
