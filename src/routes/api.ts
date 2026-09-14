@@ -43,6 +43,11 @@ export function createApiRouter(deps: Dependencies): Router {
       return;
     }
 
+    if (current.user.id !== order.user_id) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
     res.json({ order, items: listOrderItems(db, order.id) });
   });
 

@@ -9,6 +9,7 @@ import {
   createSignedDownloadPath,
   verifySignedDownload,
 } from "../uploads/signedDownloads.ts";
+import { hasRole } from "../auth/accessControl.ts";
 
 export function createFilesRouter(deps: Dependencies): Router {
   const { db } = deps;
@@ -27,7 +28,7 @@ export function createFilesRouter(deps: Dependencies): Router {
     }
 
     const file = findUploadedFileById(db, fileId);
-    if (!file) {
+    if (!file || (file.user_id !== current.user.id && !hasRole(current, "support", "admin"))) {
       sendErrorPage(res, 404, "File Not Found", "We couldn't find that file.");
       return;
     }
