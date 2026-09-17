@@ -22,6 +22,7 @@ import {
   findOrderById,
   InsufficientInventoryError,
 } from "../orders/index.ts";
+import { csrfTokensMatch } from "../csrf.ts";
 
 export function sendFulfillmentTimeout(
   response: Response,
@@ -78,6 +79,12 @@ export function createCheckoutRouter(deps: Dependencies): Router {
   router.post("/checkout", async (req, res) => {
     const current = requireAuth(db, req, res);
     if (!current) {
+      return;
+    }
+
+    const isCsrfMatch = csrfTokensMatch(current.session.csrf_token, req.body?.csrfToken);
+    if (!isCsrfMatch) {
+      sendErrorPage(res, 403, "Forbidden", "Forbidden request");
       return;
     }
 
