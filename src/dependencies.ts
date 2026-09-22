@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "./db/index.ts";
@@ -15,7 +14,24 @@ export type Dependencies = {
   downloadSigningKey: Buffer;
   keyring: Keyring | undefined;
   db: DatabaseSync;
+  pawPalApiKey: string;
 };
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function getSigningKey(name: string): Buffer {
+  const value = requireEnv(name);
+  if (value.length !== 64) {
+    throw new Error("Signing Key is of inapropriate length");
+  }
+  return Buffer.from(value, "hex");
+}
 
 function parseNonNegativeInteger(value: string, name: string): number {
   const parsed = Number(value);
@@ -50,8 +66,9 @@ export function initDependencies(
     maxRequestBodyBytes: 32 * 1024,
     maxUploadBytes: 1024 * 1024,
     maxPublicProductResults: 50,
-    downloadSigningKey: randomBytes(32),
+    downloadSigningKey: getSigningKey("DOWNLOAD_SIGNING_KEY"),
     keyring: loadOptionalKeyring(env),
+    pawPalApiKey: requireEnv("PAWPAL_API_KEY"),
   };
 
   return { ...values, db: openDatabase(values.databasePath) };
