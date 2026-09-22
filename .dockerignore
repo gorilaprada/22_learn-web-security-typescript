@@ -1,0 +1,15 @@
+dist/
+.env*
+.git/
+node_modules/
+tmp/
+**/*.log
+data/*.sqlite*
+data/render-jobs/
+data/uploads/*
+data/bulk-tax-documents/*
+!data/uploads/mystery-shack-tax-exemption.pdf
+attacker-lab/
+coverage/
+.oxfmtrc.jsonc
+.oxlintrc.jsonc
