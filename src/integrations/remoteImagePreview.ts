@@ -9,15 +9,32 @@ export type RemoteImagePreviewResult = {
 
 export class RemoteImagePreviewError extends Error {}
 
+function parseAllowedImageURL(rawUrl: string): URL | undefined {
+  const url = new URL(rawUrl);
+  if (url.protocol !== "https:") return undefined;
+  if (url.username || url.password) return undefined;
+  if (url.origin !== "https://storage.googleapis.com") {
+    return undefined;
+  }
+  return url;
+}
+
 export async function fetchRemoteImagePreview(
   imageUrl: string,
   maxBytes: number,
   fetchImpl: typeof fetch = fetch,
 ): Promise<RemoteImagePreviewResult> {
   let response: Response;
+  const allowedURL = parseAllowedImageURL(imageUrl);
+  if (allowedURL === undefined) {
+    throw new RemoteImagePreviewError(
+      "Use an HTTPS URL from an allowed image host."
+    );
+  };
   try {
-    response = await fetchImpl(imageUrl, {
+    response = await fetchImpl(allowedURL, {
       signal: AbortSignal.timeout(5_000),
+      redirect: "manual",
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") {
@@ -33,6 +50,12 @@ export async function fetchRemoteImagePreview(
       `The image host returned HTTP ${response.status}.`,
     );
   }
+
+  if ((response.status >= 300) && (response.status <= 399)) {
+    throw new RemoteImagePreviewError(
+      "Image URL redirects are not allowed."
+    );
+  };
 
   const declaredContentType = response.headers
     .get("content-type")
@@ -57,7 +80,7 @@ export async function fetchRemoteImagePreview(
   }
 
   return {
-    requestedUrl: imageUrl,
+    requestedUrl: allowedURL.toString(),
     finalUrl: response.url,
     status: response.status,
     contentType: detectedContentType,
