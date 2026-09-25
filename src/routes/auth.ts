@@ -55,6 +55,8 @@ import {
   renderTotpLoginPage as renderTotpLoginView,
 } from "../views/auth.ts";
 import { logEvent } from "../logger.ts";
+import { passwordNeedsRehash } from "../auth/passwords.ts";
+import { updateUserPassword } from "../auth/users.ts";
 
 type AuthenticationLogFields = {
   success: boolean;
@@ -157,6 +159,10 @@ export function createAuthRouter(deps: Dependencies): Router {
       return;
     }
 
+    if (passwordNeedsRehash(user.password_hash)) {
+      await updateUserPassword(db, user.id, password);
+    }
+
     if (!verifyAndConsumeBackupCode(db, user.id, backupCode)) {
       recordRecoveryAttempt(db, email, user.id, false);
       logEvent("mfa_recovery_attempt", {
@@ -210,6 +216,10 @@ export function createAuthRouter(deps: Dependencies): Router {
         .type("html")
         .send(renderLoginPage("Invalid email or password", returnTo));
       return;
+    }
+
+    if (passwordNeedsRehash(user.password_hash)) {
+      await updateUserPassword(db, user.id, password);
     }
 
     const challengeToken = getTotpLoginChallengeToken(req.header("cookie"));
