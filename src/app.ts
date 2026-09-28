@@ -19,6 +19,7 @@ import { createPawPalRouter } from "./routes/pawpal.ts";
 import { createProductsRouter } from "./routes/products.ts";
 import { createStorefrontRouter } from "./routes/storefront.ts";
 import { createSupportRouter } from "./routes/support.ts";
+import { createRateLimiter } from "./security/rateLimit.ts";
 import { migrateSensitiveDataAtRest } from "./storage/migrations.ts";
 import cors from "cors";
 import helmet from "helmet";
@@ -61,6 +62,11 @@ export function createApp(deps: Dependencies): express.Express {
   app.get("/health", (_req, res) => {
     res.json({ ok: true, app: "bearly-secure" });
   });
+  // Added by me 
+  app.use(createRateLimiter({
+    windowSeconds: 60,
+    max: 100,
+  }));
   app.use(express.static("public"));
   app.use(
     "/vendor/simplewebauthn",

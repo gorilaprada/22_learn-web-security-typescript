@@ -115,8 +115,16 @@ export class FixedWindowRateLimiter {
 }
 
 export function createRateLimiter(options: RateLimiterOptions): RequestHandler {
-  validateRateLimiterOptions(options);
-  return (_req, _res, next) => next();
+  const rateLimiter = new FixedWindowRateLimiter(options);
+  return (req, res, next) => {
+    const consume = rateLimiter.consume(req)
+    if (consume.limited === true) {
+      rateLimiter.reject(req, res, consume.state);
+      return;
+    }
+    rateLimiter.setHeaders(res, consume.state);
+    next();
+    };
 }
 
 function validateRateLimiterOptions(options: RateLimiterOptions): void {
