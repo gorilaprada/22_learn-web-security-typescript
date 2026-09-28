@@ -8,7 +8,12 @@ export function createPawPalRouter(deps: Dependencies): Router {
   const router = Router();
 
   router.post("/integrations/pawpal/webhook", (req, res) => {
-    const verification = verifyPawPalWebhook(req.body);
+    const pawpalKey = req.get("X-PawPal-Key");
+    if (!pawpalKey) {
+      res.sendStatus(400);
+      return;
+    }
+    const verification = verifyPawPalWebhook(req.body, pawpalKey, deps.pawPalApiKey);
     if (verification.outcome === "unauthorized") {
       res.sendStatus(401);
       return;

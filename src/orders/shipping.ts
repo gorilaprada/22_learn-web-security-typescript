@@ -1,4 +1,8 @@
-import type { Keyring } from "../storage/keyring.ts";
+import {
+  type  Keyring,
+  decryptStringWithKeyring,
+  encryptStringWithKeyring,
+} from "../storage/keyring.ts";
 
 export type ShippingDetails = {
   name: string;
@@ -10,26 +14,20 @@ export type ShippingDetails = {
 
 export function encryptShippingDetails(
   details: ShippingDetails,
-  _keyring: Keyring | undefined,
+  keyring: Keyring | undefined,
 ): string {
-  return JSON.stringify(details);
+  const encryptedStr = encryptStringWithKeyring(JSON.stringify(details), keyring);
+  return encryptedStr;
 }
 
 export function decryptShippingDetails(
   serialized: string,
-  _keyring: Keyring | undefined,
+  keyring: Keyring | undefined,
 ): ShippingDetails {
-  let details: unknown;
-  try {
-    details = JSON.parse(serialized);
-  } catch {
-    throw new Error("Invalid shipping details");
-  }
-
+  const details = JSON.parse(decryptStringWithKeyring(serialized, keyring));
   if (!isShippingDetails(details)) {
     throw new Error("Invalid shipping details");
   }
-
   return details;
 }
 
