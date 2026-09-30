@@ -57,6 +57,8 @@ import {
 import { logEvent } from "../logger.ts";
 import { passwordNeedsRehash } from "../auth/passwords.ts";
 import { updateUserPassword } from "../auth/users.ts";
+import { canonicalEmailKey, createRateLimiter } from "../security/rateLimit.ts";
+import { sendErrorPage } from "../errors.ts";
 
 type AuthenticationLogFields = {
   success: boolean;
@@ -73,6 +75,7 @@ function logAuthenticationEvent(
   logEvent(eventName, fields);
 }
 
+
 export function createAuthRouter(deps: Dependencies): Router {
   const { db, appOrigin } = deps;
   const router = Router();
@@ -80,6 +83,40 @@ export function createAuthRouter(deps: Dependencies): Router {
   const MIN_PASSWORD_LENGTH = 8;
   const VERIFICATION_RESTART_MESSAGE =
     "That verification attempt is no longer valid. Log in again.";
+
+  const logingRateLimiter = createRateLimiter({
+    windowSeconds: 60 * 15,
+    max: 20,
+    onLimit: (_req, res, _state) => {
+      sendErrorPage(res, 429, "Too Many Messages", "Try again later");
+    },
+  });
+
+  const accountRateLimiter = createRateLimiter({
+    windowSeconds: 60 * 15,
+    max: 5,
+    key: canonicalEmailKey,
+    onLimit: (_req, res, _state) => {
+      sendErrorPage(res, 429, "Too Many Messages", "Try again later");
+    },
+  });
+
+  const passwordRateLimiter = createRateLimiter({
+    windowSeconds: 60 * 60,
+    max: 10,
+    onLimit: (_req, res, _state) => {
+      sendErrorPage(res, 429, "Too Many Messages", "Try again later");
+    },
+  });
+
+  const passwordAccountRateLimiter = createRateLimiter({
+    windowSeconds: 60 * 60,
+    max: 3,
+    key: canonicalEmailKey,
+    onLimit: (_req, res, _state) => {
+      sendErrorPage(res, 429, "Too Many Messages", "Try again later");
+    },
+  });
 
   router.get("/login", (req, res) => {
     const returnTo = safeReturnTo(req.query.returnTo);
@@ -198,7 +235,7 @@ export function createAuthRouter(deps: Dependencies): Router {
     res.redirect("/account/totp");
   });
 
-  router.post("/login", async (req, res) => {
+  router.post("/login", logingRateLimiter, accountRateLimiter, async (req, res) => {
     const email = normalizeEmail(String(req.body.email ?? ""));
     const password = String(req.body.password ?? "");
     const returnTo = safeReturnTo(req.body.returnTo);
@@ -257,7 +294,7 @@ export function createAuthRouter(deps: Dependencies): Router {
     res.redirect("/login");
   });
 
-  router.post("/login/totp", (req, res) => {
+  router.post("/login/totp", logingRateLimiter, (req, res) => {
     const requestedReturnTo = safeReturnTo(req.body.returnTo);
     const challengeToken = getTotpLoginChallengeToken(req.header("cookie"));
     const challenge = challengeToken
@@ -410,7 +447,7 @@ export function createAuthRouter(deps: Dependencies): Router {
     res.type("html").send(renderPasswordResetRequestPage());
   });
 
-  router.post("/password-reset", (req, res) => {
+  router.post("/password-reset", passwordRateLimiter, passwordAccountRateLimiter, (req, res) => {
     const email = normalizeEmail(String(req.body.email ?? ""));
     const user = findUserByEmail(db, email);
 

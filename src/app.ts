@@ -67,14 +67,27 @@ export function createApp(deps: Dependencies): express.Express {
     windowSeconds: 60,
     max: 100,
   }));
+  app.use(
+    "/api/products",
+    createRateLimiter({
+      windowSeconds: 60,
+      max: 30,
+    })
+  );
+
   app.use(express.static("public"));
   app.use(
     "/vendor/simplewebauthn",
     express.static("node_modules/@simplewebauthn/browser/dist/bundle"),
   );
 
-  app.use(express.urlencoded({ extended: false }));
-  app.use(express.json());
+  app.use(express.urlencoded({ 
+    extended: false,
+    limit: deps.maxRequestBodyBytes,
+  }));
+  app.use(express.json({
+    limit: deps.maxRequestBodyBytes,
+  }));
   app.use(createPawPalRouter(deps));
   app.use(validateRequestOrigin(deps.appOrigin));
   app.use(
