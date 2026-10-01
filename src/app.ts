@@ -23,13 +23,23 @@ import { createRateLimiter } from "./security/rateLimit.ts";
 import { migrateSensitiveDataAtRest } from "./storage/migrations.ts";
 import cors from "cors";
 import helmet from "helmet";
+import { createLoadShedder } from "./security/loadShedding.ts";
+import { setRequestId } from "./observability/requestId.ts";
+import { createWellKnownRouter } from "./routes/well-known.ts";
+
+const loadShedder = createLoadShedder({
+  maxConcurrent: 50,
+  retryAfterSeconds: 1,
+});
 
 export function createApp(deps: Dependencies): express.Express {
   migrateSensitiveDataAtRest(deps.db, deps.keyring);
   const app = express();
 
-  app.set("trust proxy", deps.trustedProxyHops);
 
+  app.set("trust proxy", deps.trustedProxyHops);
+  // Added by me
+  app.use(setRequestId);
   app.use((_req, res, next) => {
     const cspNonce = randomBytes(16).toString("base64");
     res.locals.cspNonce = cspNonce;
@@ -63,6 +73,7 @@ export function createApp(deps: Dependencies): express.Express {
     res.json({ ok: true, app: "bearly-secure" });
   });
   // Added by me 
+  app.use(loadShedder);
   app.use(createRateLimiter({
     windowSeconds: 60,
     max: 100,
@@ -100,6 +111,8 @@ export function createApp(deps: Dependencies): express.Express {
     }),
   );
   app.use(createApiRouter(deps));
+
+  app.use(createWellKnownRouter());
 
   app.use(createArchiveRouter(deps));
   app.use(createAssistantRouter(deps));

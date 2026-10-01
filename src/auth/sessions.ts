@@ -4,6 +4,15 @@ import { findUserById, type User } from "./users.ts";
 
 const defaultSessionTtlSeconds = 60 * 60 * 24 * 30;
 
+export function revokeAllActiveSessions(db: DatabaseSync): number {
+  const sync = db.prepare(`
+    UPDATE sessions
+    SET revoked_at = CURRENT_TIMESTAMP
+    WHERE revoked_at is NULL;
+  `).run();
+  return Number(sync.changes);
+}
+
 export function fastHash(value: string): string {
   return hash("sha256", value, "hex");
 }

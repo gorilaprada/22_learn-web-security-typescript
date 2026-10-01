@@ -59,19 +59,26 @@ import { passwordNeedsRehash } from "../auth/passwords.ts";
 import { updateUserPassword } from "../auth/users.ts";
 import { canonicalEmailKey, createRateLimiter } from "../security/rateLimit.ts";
 import { sendErrorPage } from "../errors.ts";
+import { protectSignupFromBots } from "../security/botRisk.ts";
+import { clientIpKey } from "../security/rateLimit.ts";
+import { createAuthAlertThreshold } from "../observability/authAlerts.ts";
 
 type AuthenticationLogFields = {
   success: boolean;
-  userId?: number;
+  userId?: number | null;
   [key: string]: unknown;
 };
 
 function logAuthenticationEvent(
-  _req: Request,
-  _res: Response,
+  req: Request,
+  res: Response,
   eventName: "login_attempt" | "password_reset_request",
   fields: AuthenticationLogFields,
 ): void {
+  fields.requestId = res.locals.requestId;
+  fields.sourceIp = clientIpKey(req);
+  fields.outcome = fields.success ? "success" : "failure";
+  fields.userId = fields.userId ??  null;
   logEvent(eventName, fields);
 }
 
@@ -83,6 +90,18 @@ export function createAuthRouter(deps: Dependencies): Router {
   const MIN_PASSWORD_LENGTH = 8;
   const VERIFICATION_RESTART_MESSAGE =
     "That verification attempt is no longer valid. Log in again.";
+
+  const recordFailedLogin = createAuthAlertThreshold({
+    signal: "failed_logins",
+    threshold: 3,
+    windowSeconds: 5 * 60,
+  });
+
+  const recordPasswordResetRequest = createAuthAlertThreshold({
+    signal: "password_reset_requests",
+    threshold: 3,
+    windowSeconds: 10 * 60,
+  });
 
   const logingRateLimiter = createRateLimiter({
     windowSeconds: 60 * 15,
@@ -248,6 +267,7 @@ export function createAuthRouter(deps: Dependencies): Router {
         failureReason: !user ? "email not found" : "password mismatch",
         returnTo,
       });
+      recordFailedLogin(req, res.locals.requestId, null);
       res
         .status(401)
         .type("html")
@@ -330,6 +350,7 @@ export function createAuthRouter(deps: Dependencies): Router {
         failureReason: "totp code mismatch",
         returnTo: challenge.return_to,
       });
+      recordFailedLogin(req, res.locals.requestId, user.id);
       if (challengeExhausted) {
         clearTotpLoginChallengeCookie(res);
         res.redirect(verificationRestartLoginPath(challenge.return_to));
@@ -365,7 +386,7 @@ export function createAuthRouter(deps: Dependencies): Router {
     res.redirect(challenge.return_to);
   });
 
-  router.post("/signup", async (req, res) => {
+  router.post("/signup", protectSignupFromBots, async (req, res) => {
     if (getCurrentSession(db, req.header("cookie"))) {
       res.redirect("/account");
       return;
@@ -457,6 +478,7 @@ export function createAuthRouter(deps: Dependencies): Router {
         success: false,
         failureReason: "email not found",
       });
+      recordPasswordResetRequest(req, res.locals.requestId, null);
       res.type("html").send(renderPasswordResetRequestConfirmationPage());
       return;
     }
@@ -474,6 +496,7 @@ export function createAuthRouter(deps: Dependencies): Router {
       resetToken: token,
       resetLink,
     });
+    recordPasswordResetRequest(req, res.locals.requestId, user.id);
     res.type("html").send(renderPasswordResetRequestConfirmationPage());
   });
 

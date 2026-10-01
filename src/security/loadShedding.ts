@@ -1,9 +1,39 @@
-import type { Response } from "express";
+import type { RequestHandler, Response } from "express";
 
 export type LoadSheddingOptions = {
   maxConcurrent: number;
   retryAfterSeconds: number;
 };
+
+export function createLoadShedder(options: LoadSheddingOptions): RequestHandler {
+  validateLoadSheddingOptions(options);
+  let count: number = 0;
+  return (req, res, next) => {
+    res.set("X-In-Flight-Limit", `${options.maxConcurrent}`);
+    if (count >= options.maxConcurrent) {
+      rejectLoadShedding(res, options)
+      return;
+    }
+    count++;
+    let canRelease: boolean = true;
+    req.once("finish", () => {
+      if (!canRelease) {
+        return;
+      }
+      count--;
+      canRelease = false;
+    });
+    req.once("close", () => {
+      if (!canRelease) {
+        return;
+      }
+      count--;
+      canRelease = false;
+    });
+    next();
+    return;
+  }
+}
 
 export function validateLoadSheddingOptions(
   options: LoadSheddingOptions,
